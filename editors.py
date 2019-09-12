@@ -1,6 +1,7 @@
 import os
 import tempfile 
 import subprocess
+
 ed = os.environ.get('EDITOR', 'vim')
 def vim(note):
     if not note: note = ""
