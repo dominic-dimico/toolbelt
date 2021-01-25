@@ -5,7 +5,7 @@ import subprocess
 ed = os.environ.get('EDITOR', 'vim')
 def vim(note):
     if not note: note = ""
-    tf = tempfile.NamedTemporaryFile(suffix=".tmp", delete=False);
+    tf = tempfile.NamedTemporaryFile(suffix=".note", delete=False);
     tf.write(note)
     tf.flush()
     name = tf.name
