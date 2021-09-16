@@ -67,10 +67,19 @@ class AutoCompleter():
     def consume(self, key):
         if ord(key) == 127:
            self.input = self.input[:-1];
-        if key == '\t':
+        elif key == "\x17":
+           parts = self.input.split(" ");
+           self.input = " ".join(parts[:-1]);
+        elif key in "=-';:.,<>/?][{}\|)(!@#$%^&*~_`":
            if self.suggestion:
-              self.input += self.suggestion + ' ';
+              self.input += self.suggestion + key;
+           else: self.input += key;
+        elif key == '\t':
+           if self.suggestion:
+              self.input += ' ';
         elif key == '\n':
+           if self.suggestion:
+              self.input += self.suggestion;
            self.finished = True;
         elif key == ' ':
            if self.suggestion:
@@ -84,6 +93,7 @@ class AutoCompleter():
 
     def autocomplete(self):
         lastword = self.input.split(" ")[-1];
+        lastword = ''.join(e for e in lastword if e.isalnum())
         if lastword != "":
             for word in self.words:
                 if word.startswith(lastword):
@@ -108,8 +118,12 @@ class AutoCompleter():
       
 
     def run(self):
-        self.log.fd.write(self.prompt);
-        self.log.fd.flush();
+        self.finished = False;
+        self.input = "";
+        self.log.outfile.write(self.prompt);
+        self.log.outfile.flush();
         while not self.finished:
             key = getch.getch();
             self.handle(key);
+        self.log.outfile.write('\n');
+        return self.input;
