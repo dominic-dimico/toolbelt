@@ -14,9 +14,11 @@ class KeyBindings():
               };
         else: self.bindings = bindings;
 
+
     # Add a keybinding by supplying key, callback, arg
     def add(self, key, callback, args):
         self.bindings[key] = (callback, args);
+
 
     # Allow multiple iterations of key command; supports numbers
     def accumulate(self, key):
@@ -31,7 +33,7 @@ class KeyBindings():
     def handle(self, key):
         if key.isdigit():
            self.accumulate(key);
-        if key not in self.bindings: return True;
+        if key not in self.bindings: return False;
         (callback, args) = self.bindings[key];
         if args == None: return callback();
         else:            return callback(args);
@@ -46,16 +48,19 @@ class KeyBindings():
     # Wait for keypress, and handle
     def wait(self):
         key = getch.getch();
-        self.handle(key);
+        return (key, self.handle(key));
 
 
 class AutoCompleter():
 
     words      = [];
     suggestion = "";
+    last       = "";
     input      = "";
     finished   = False;
     prompt     = "";
+    prints     = True;
+
 
     log = smartlog.Smartlog();
 
@@ -88,33 +93,49 @@ class AutoCompleter():
         elif key.isalnum(): 
            self.input += key;
         else: pass
-        self.log.reprint(self.prompt + self.input);
+        if self.prints:
+           self.log.reprint(self.prompt + self.input);
 
 
     def autocomplete(self):
+        if self.finished:
+           self.suggestion = None;
+           return;
         lastword = self.input.split(" ")[-1];
         lastword = ''.join(e for e in lastword if e.isalnum())
         if lastword != "":
             for word in self.words:
                 if word.startswith(lastword):
                    self.suggestion = word[len(lastword):];
+                   if self.input+self.suggestion == self.last:
+                      continue;
+                   self.last = self.input+self.suggestion;
                    return;
         self.suggestion = None;
                
 
-    def dosuggestion(self):
+    def formatsuggestion(self):
         if self.suggestion:
-           self.log.reprint(
-             self.prompt +
-             self.input + 
-             self.log.t.italic(self.suggestion)
-           );
+          return (
+                  self.prompt +
+                  self.input + 
+                  self.log.t.italic(self.suggestion)
+          )
+        else: return self.prompt + self.input;
+
+
+    def printsuggestion(self):
+        if self.suggestion:
+            self.log.reprint(
+                self.formatsuggestion()
+               );
 
 
     def handle(self,key):
         self.consume(key);
         self.autocomplete();
-        self.dosuggestion();
+        if self.prints: self.printsuggestion();
+        else:    return self.formatsuggestion();
       
 
     def run(self):

@@ -6,7 +6,6 @@ import random
 import time
 import pytz
 
-cal = parsedatetime.Calendar();
 class TagException(Exception):
       pass;
 
@@ -15,18 +14,32 @@ class TagException(Exception):
 #   before, after
 #   which day of week it is
 
+    # Convert query to lexicographic format
+def quickdate(query, to="lex"):
+    cal = parsedatetime.Calendar();
+    dt = cal.parse(query)[0];
+    if to=="dt":
+       return dt;
+    elif to=="lex":
+       return time.strftime('%Y-%m-%d %H:%M:%S', dt);
+    elif to=="iso":
+       return time.strftime('%Y-%m-%dT%H:%M:%S-04:00', dt);
+    elif to=="file":
+       return time.strftime('%Y-%m-%d_%H:%M:%S', dt);
+
 
 class QuickDate():
 
     query = ""
+    cal = parsedatetime.Calendar();
 
 
-    def __init__(self,query="now"):
+    def __init__(self, query=""):
         self.set(query);
 
 
     # Set all members
-    def set(self,query="now"):
+    def set(self, query=""):
         self.now  = self.qry2dt("now");
         self.lex  = self.qry2lex(query);
         self.dt   = self.lex2dt(self.lex);
@@ -47,14 +60,14 @@ class QuickDate():
 
     # Convert query to lexicographic format
     def qry2lex(self,query):
-          parsed = cal.parse(query)[0]
+          parsed = self.cal.parse(query)[0]
           dt = time.strftime('%Y-%m-%d %H:%M:%S', parsed)
           return dt;
 
 
     # Convert string date to datetime
     def lex2dt(self,lex):
-         return cal.parseDT(datetimeString=lex, tzinfo=pytz.timezone("America/New_York"))[0]
+         return self.cal.parseDT(datetimeString=lex, tzinfo=pytz.timezone("America/New_York"))[0]
 
 
     # Convert query directly to date
@@ -92,10 +105,17 @@ class QuickDate():
         delta = then - now;
         return abs(delta.seconds);
 
+    def __lt__(self,qd):
+        return self.dt < qd.dt;
 
-    # Return number of seconds of a datetime specification (e.g. "1 minute")
+    def __gt__(self,qd):
+        return self.dt > qd.dt;
+
     def before(self,qd):
         return self.dt < qd.dt;
+
+    def after(self,qd):
+        return self.dt > qd.dt;
 
 
     # Generate a random date within range

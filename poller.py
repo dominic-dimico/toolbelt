@@ -7,6 +7,9 @@ import toolbelt
 
 
 # Extend into SQL poller
+#   - has Squid
+#   - polls datetime in database
+
 class Poller:
 
 

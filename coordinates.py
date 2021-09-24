@@ -8,14 +8,17 @@ class Cursor():
       x    =  0;
       y    =  0;
 
+      xwrap = False;
+      ywrap = False;
+
 
       def __init__(self, args=None):
           if args: self.resize(args);
 
 
       def violation(self, dx, dy):
-          if (self.x+dx > self.xmax or self.x+dx < self.xmin or 
-              self.y+dy > self.ymax or self.y+dy < self.ymin):
+          if ((self.xwrap or (self.x+dx < self.xmax and self.x+dx > self.xmin)) and
+              (self.ywrap or (self.y+dy < self.ymax and self.y+dy > self.ymin))):
                 return True;
           else: return False;
 
@@ -45,21 +48,35 @@ class Cursor():
 
 
       def up(self):
-          if self.y > self.ymin:
+          if self.ywrap:
+             self.y = (((self.y + 1) % (self.ymax-self.ymin+1)) + self.ymin);
+          elif self.y > self.ymin:
              self.y -= 1;
       
 
       def down(self):
-          if self.y < self.ymax-1:
+          if self.ywrap:
+              self.y = (
+                    ((self.y + (self.ymax-self.ymin)) % 
+                    (self.ymax-self.ymin+1)) + self.ymin
+              );
+          elif self.y < self.ymax:
              self.y += 1;
 
 
       def left(self):
-          if self.x > self.xmin:
+          if self.xwrap:
+             self.x = (
+                ((self.x + (self.xmax-self.xmin)) % 
+                (self.xmax-self.xmin+1)) + self.xmin
+             );
+          elif self.x > self.xmin:
              self.x -= 1;
 
 
       def right(self):
-          if self.x < self.xmax-1:
+          if self.xwrap:
+             self.x = ((self.x + 1) % (self.xmax-self.xmin+1)) + self.xmin;
+          elif self.x < self.xmax:
              self.x += 1;
 
