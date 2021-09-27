@@ -79,7 +79,7 @@ class Interpreter:
          self.log.warn("Command not found: %s" % (cn));
          return args;
       except Exception:
-         self.log.print(args);
+         #self.log.print(args);
          import traceback; traceback.print_exc();
          import code; code.interact(local=locals()); 
 

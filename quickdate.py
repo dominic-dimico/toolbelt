@@ -50,6 +50,8 @@ class QuickDate():
 
     # Set all member with dt
     def setbydt(self,dt):
+        import pytz;
+        dt        = pytz.utc.localize(dt);
         self.dt   = dt;
         self.now  = self.qry2dt("now");
         self.lex  = self.dt2lex(dt);
@@ -100,10 +102,12 @@ class QuickDate():
 
     # Return number of seconds of a datetime specification (e.g. "1 minute")
     def dt2secs(self,dt):
+      try:
         then = dt;
         now  = self.qry2dt("now");
         delta = then - now;
         return abs(delta.seconds);
+      except: return 0;
 
     def __lt__(self,qd):
         return self.dt < qd.dt;
