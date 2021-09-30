@@ -1,6 +1,7 @@
 import getch
 import sys
 import smartlog
+format_ = format
 
 
 class KeyBindings():

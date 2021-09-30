@@ -5,6 +5,7 @@ import datetime
 import random
 import time
 import pytz
+format_ = format
 
 class TagException(Exception):
       pass;
@@ -51,7 +52,8 @@ class QuickDate():
     # Set all member with dt
     def setbydt(self,dt):
         import pytz;
-        dt        = pytz.utc.localize(dt);
+        try:    dt = pytz.utc.localize(dt);
+        except: pass;
         self.dt   = dt;
         self.now  = self.qry2dt("now");
         self.lex  = self.dt2lex(dt);

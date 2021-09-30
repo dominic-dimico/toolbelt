@@ -1,4 +1,4 @@
-class Cursor():
+class Coordinates():
 
 
       xmin =  0;
@@ -21,6 +21,17 @@ class Cursor():
               (self.ywrap or (self.y+dy < self.ymax and self.y+dy > self.ymin))):
                 return True;
           else: return False;
+
+
+      def adjust(self, what, howmuch):
+          if what=='xmin': self.xmin += howmuch;
+          elif what=='ymin': self.ymin += howmuch;
+          elif what=='xmax': self.xmax += howmuch;
+          elif what=='ymax': self.ymax += howmuch;
+
+
+      def getpos(self):
+          return (self.x, self.y);
 
 
       def setpos(self, x, y):
@@ -79,4 +90,40 @@ class Cursor():
              self.x = ((self.x + 1) % (self.xmax-self.xmin+1)) + self.xmin;
           elif self.x < self.xmax:
              self.x += 1;
+
+
+class Cursor(Coordinates):
+
+     def __init__(self, args={}):
+
+         super().__init__(args);
+
+         from smartlog import Smartlog;
+         self.log = Smartlog();
+
+         args = self.log.argcheck(args, {
+            'kb'     : {'default' :  None},
+            'extend' : {'default' :  False},
+         });
+
+         if args['kb']: 
+            self.kb = args['kb'];
+         else:
+           from toolbelt.keybindings import KeyBindings;
+           self.kb = KeyBindings({
+              'h'  : (self.up,    None),
+              'l'  : (self.down,  None),
+              'k'  : (self.left,  None),
+              'j'  : (self.right, None),
+              '\n' : (self.getpos, None),
+           });
+           if args['extend']:
+               self.kb.bindings.update({
+                  'L' : (self.adjust,  ('xmax',  1)),
+                  'H' : (self.adjust,  ('xmax', -1)),
+                  'K' : (self.adjust,  ('ymax', -1)),
+                  'J' : (self.adjust,  ('ymax',  1)),
+               });
+
+
 
