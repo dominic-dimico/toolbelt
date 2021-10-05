@@ -11,8 +11,11 @@ import queue;
 #server = SmartlogServer('localhost', 50007);
 #server.read();
 
-server = toolbelt.sockets.DispatchServer('localhost', 50007);
-server.read();
+
+cc = toolbelt.sockets.ChatServer();
+
+#server = toolbelt.sockets.SmartlogServer('localhost', 50007);
+#server.read();
 
 
 # def server_read(args):

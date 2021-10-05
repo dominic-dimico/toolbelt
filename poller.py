@@ -12,9 +12,7 @@ import toolbelt
 
 class Poller:
 
-
     log = smartlog.Smartlog();
-
 
     def __init__(self, args=None):
         q = queue.Queue();

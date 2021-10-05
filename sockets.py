@@ -1,9 +1,10 @@
 import socket
+import json
 import smartlog
 import select
 import binascii
 import threading
-import os
+import os, sys
 import queue
 from toolbelt.quickdate import quickdate
 
@@ -19,62 +20,124 @@ class Socket:
 
    name = ""
    sock = None;
+   plug = None;
 
 
-   def __init__(self, host, port, name=""):
+   def __init__(self, host, port, name="", init=True):
        self.config(host, port, name);
-       self.refresh();
-       self.keepalive = False;
-       self.renew = True;
+       if init: self.reset();
 
+
+   def __str__(self):
+       s = str((self.fileno(), self.name, self.host, self.port, self.listening, self.connected));
+       if self.plug: s += ":=:" + self.plug.__str__();
+       return s
 
 
    def config(self, host, port, name):
-      if name=="":
-         self.name = binascii.b2a_hex(os.urandom(4));
-      else:
-         self.name = bytearray(name, 'utf-8');
-      self.bytes = bytearray([len(self.name)]);
-      self.host = host;
-      self.port = port;
+      if name == "":
+            self.name     = binascii.b2a_hex(os.urandom(4)).decode();
+      else: self.name     = name;
+      self.host           = host;
+      self.port           = port;
+      self.listening      = False;
+      self.connected      = False;
+      self.reset_server   = False;
+      self.reset_on_write = False;
+      self.reset_on_read  = False;
 
 
-   def refresh(self):
+   def _select(self, rx, wx, xx):
+         rx  = [r for r in rx if r.fileno() > 0];
+         wx  = [w for w in wx if w.fileno() > 0];
+         xx  = [x for x in xx if x.fileno() > 0];
+         rxx = [r.sock for r in rx]; 
+         wxx = [w.sock for w in wx]; 
+         xxx = [x.sock for x in xx]; 
+         rxx, wxx, xxx = select.select(rxx, wxx, xxx);
+         rx = [r for r in rx if r.sock in rxx]
+         wx = [w for w in wx if w.sock in wxx]
+         xx = [x for x in xx if x.sock in xxx]
+         return rx, wx, xx;
+
+
+   def fileno(self):
+       return self.sock.fileno();
+
+
+
+
+   def reset(self):
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
       return self.sock;
 
 
+
+   def listen(self):
+       if not self.listening:
+          self.sock.bind((self.host, self.port));
+          self.sock.listen(5);
+          conn, addr     = sock.accept();
+          host, port     = addr;
+          self.plug      = Socket(host, port, '?', init = False);
+          self.plug.sock = conn;
+          self.listening = True;
+
+
    def read(self):
-      sock = self.sock;
-      sock.bind((self.host, self.port))
-      sock.listen(1)
-      conn, addr = sock.accept()
-      data = bytearray();
-      while 1:
-           recvdata = conn.recv(1024)
-           if not recvdata:
-             break
-           else: data += recvdata;
-      conn.close()
-      return data;
+       if self.reset_server:
+          self.reset();
+          self.listening = False;
+       self.listen();
+       data = bytearray();
+       while 1:
+          recvdata = self.plug.sock.recv(1024)
+          if not recvdata: break;
+          else: data += recvdata;
+       data = self.decode(data);
+       self.plug.name = data['id'];
+       if self.reset_on_read:
+          self.plug.sock.close();
+          self.listening = False;
+       return data;
+
+
+   def decode(self, data):
+       try:    data = json.loads(data);
+       except: print(('error decoding: ', data));
+       return  data;
+
+
+   def encode(self, data):
+       if isinstance(data, dict):
+          if 'id' not in data:
+             data['id'] = self.name;
+          try:    data = json.dumps(data);
+          except: data = str(data);
+       return bytearray(data, 'utf-8');
 
 
    def write(self, data):
       try:
-         if isinstance(data, str):
-            data = bytearray(data, 'utf-8');
-         data = (self.bytes+self.name+data);
-         if self.renew:
-            self.refresh();
-         rx, wx, xx = select.select([], [self.sock], []);
-         for w in wx:
-            try:
-              w.connect((self.host, self.port));
-            except BlockingIOError: 
-              continue;
-            bytes = w.send(data, 1024);
-            if not self.keepalive:
-               w.close();
+         data = self.encode(data);
+         if self.reset_on_write: 
+            self.reset();
+         while True:
+            rx, wx, xx = self._select([], [self], []);
+            for ww in wx:
+               w = ww.sock;
+               if not ww.connected:
+                  try: 
+                     w.connect((self.host, self.port));
+                     ww.connected = True;
+                  except BlockingIOError: 
+                     ww.connected = False;
+                     continue;
+               w.sendall(data);
+               if ww.reset_on_write:
+                  w.close();
+                  ww.connected = False;
+               return;
       except Exception as e: 
            import traceback;
            traceback.print_exc();
@@ -88,99 +151,164 @@ class Server(Socket):
 
 
      def __init__(self, host, port):
-        #super().__init__(host, port);
-        self.host = host;
-        self.port = port;
-        pass
+        super().__init__(host, port);
      
 
      #####################################
      #! load all data from queue into dict
      #####################################
      def _load(self, q):
-         first = None;
-         while not first or first=='':
-            first = q.get(False);
-         nameend = int(first[0]);
-         sockname = first[1:nameend+1];
-         if sockname not in self.data:
-            self.data[sockname] = [];
-         self.data[sockname]  = bytearray();
-         self.data[sockname] += first[nameend+1:];
+         data = bytearray();
          while not q.empty():
-            self.data[sockname] += q.get(False);
+            data += q.get();
+         data = self.decode(data);
+         self.data[data['id']] = data;
+         return data['id'];
 
 
-     def postproc(self):
-        print(('postproc: ', self.data));
+     def postproc(self, args):
+         print(('postproc: ', args));
+         return args;
+
+
+     def reset(self):
+         super().reset()
+         try:
+            self.sock.bind((self.host,self.port));
+            self.sock.listen(5);
+         except: pass;
+         else: self.listening = True;
 
 
      def read(self):
         qs = {}
-        rx = [];
+        rx = [self];
         while True:
-           sock = self.sock;
-           if sock not in rx:
-              sock = self.refresh()
-              sock.bind((self.host,self.port));
-              sock.listen(5);
-              rx += [sock];
-           rx = [r for r in rx if r.fileno() > 0];
-           rx, wx, xx = select.select(rx, [], []);
-           for s in rx:
+           serversock = self.sock;
+           if self not in rx:
+              rx += [self];
+              if self.reset_server:
+                 self.reset();
+           rx, wx, xx = self._select(rx, rx, []);
+           self.rx = rx;
+           self.wx = wx;
+           for ss in rx:
               try:
-                 x = str([r.fileno() for r in rx]);
-                 if s == sock:
+                 s = ss.sock;
+                 if s == serversock:
+                   print((ss, s));
                    conn, addr = s.accept();
+                   host, port = addr;
                    if conn:
                       conn.setblocking(0);
-                      rx.append(conn); 
+                      plug = Socket(host, port, '', init=False);
+                      plug.sock = conn;
+                      rx.append(plug); 
                       qs[conn] = queue.Queue();
                  else:
                    data = s.recv(1024);
                    if not data: 
                        if not qs[s].empty():
-                          #log.write(quickdate('now')+':');
-                          self._load(qs[s]);
-                          self.postproc();
-                       s.close()
+                          id = self._load(qs[s]);
+                          self.postproc({'socket': ss, 'id': id});
+                       if ss.reset_on_read:
+                          s.close()
                    else: 
                       qs[s].put(data);
-                      x = str([r.fileno() for r in rx]);
               except Exception as e: 
                   import traceback;
                   traceback.print_exc();
-                  break;
+                  sys.exit(1);
+
+
+
+class ChatClient(Socket):
+
+      log = smartlog.Smartlog();
+
+      def __init__(self, name):
+          super().__init__('box.local', 50007, name);
+          self.log.printname=True;
+          self.run();
+
+      def listen(self):
+          while True:
+            x = self.read(); 
+            self.log.name = x['from']
+            self.log.logn(x['content']);
+
+      def talk(self):
+          while True:
+             x = self.log.prompt('msg');
+             self.write({
+                'from': self.name, 
+                'content': x
+             });
+
+      def run(self):
+          listener = threading.Thread(self.listen);
+          #talker   = threading.Thread(self.talk);
+          listener.run();
+          #talker.run();
+          self.talk();
+          
+          
+
+
+class ChatServer(Server):
+
+      log = smartlog.Smartlog();
+
+      def __init__(self):
+          super().__init__('box.local', 50007);
+
+      def postproc(self, args):
+         msg = self.data[args['id']];
+         for w in self.wx:
+             if w != self:
+                w.write(msg);
+         sock = args['socket'];
+         return args;
+
 
 
 class SmartlogServer(Server):
+
       log = smartlog.Smartlog();
-      def postproc(self):
-         for k in self.data:
-             self.log.info("%s: %s" % (
-                  str(k, 'utf-8'),
-                  str(self.data[k], 'utf-8')
+
+      def postproc(self, args):
+         self.log.printname = True
+         for k in self.data[args['id']]:
+             self.log.name = k;
+             self.log.info("%s" % (
+                  self.data[args['id']][k]
              ));
+         return args;
+
 
 
 class DispatchServer(Server):
+
       #ts = []
-      def runcmd(self, k, cmd):
+      def runcmd(self, sock, key, data):
+          cmd = data['cmd'];
           import subprocess
           p = subprocess.Popen(
-                str(cmd, 'utf-8').split(" "), 
+                cmd.split(" "), 
                 shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
           );
           log = smartlog.Smartlog();
-          log.name = k.decode();
+          log.name      = key;
           log.printname = True
           stdout, stderr = p.communicate();
           for line in stdout.decode().split('\n')[:-1]:
               log.logok(line);
-      def postproc(self):
-         for k in self.data:
-             t = threading.Thread(target=self.runcmd, args=(k, self.data[k]));
-             t.start();
-         self.data = {};
+
+      def postproc(self, args):
+          for k in self.data:
+              t = threading.Thread(target=self.runcmd, args=(args['socket'], k, self.data[k]));
+              t.start();
+          self.data = {};
+          return args;
