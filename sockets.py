@@ -1,6 +1,8 @@
 import socket
+import smartlog
 import select
 import binascii
+import threading
 import os
 import queue
 from toolbelt.quickdate import quickdate
@@ -22,6 +24,8 @@ class Socket:
    def __init__(self, host, port, name=""):
        self.config(host, port, name);
        self.refresh();
+       self.keepalive = False;
+       self.renew = True;
 
 
 
@@ -60,7 +64,8 @@ class Socket:
          if isinstance(data, str):
             data = bytearray(data, 'utf-8');
          data = (self.bytes+self.name+data);
-         self.refresh();
+         if self.renew:
+            self.refresh();
          rx, wx, xx = select.select([], [self.sock], []);
          for w in wx:
             try:
@@ -68,10 +73,12 @@ class Socket:
             except BlockingIOError: 
               continue;
             bytes = w.send(data, 1024);
-            w.close();
+            if not self.keepalive:
+               w.close();
       except Exception as e: 
            import traceback;
            traceback.print_exc();
+
 
 
 class Server(Socket):
@@ -98,16 +105,14 @@ class Server(Socket):
          sockname = first[1:nameend+1];
          if sockname not in self.data:
             self.data[sockname] = [];
-         #self.data[sockname].append(bytearray());
-         #index = len(self.data[sockname])-1;
-         #self.data[sockname][index] += first[nameend+1:];
          self.data[sockname]  = bytearray();
          self.data[sockname] += first[nameend+1:];
          while not q.empty():
             self.data[sockname] += q.get(False);
-            #self.data[sockname][index] += q.get(False);
-         print(self.data)
-         #print('! load data(%s, %s): %s' % (sockname, index, self.data[sockname][index]));
+
+
+     def postproc(self):
+        print(('postproc: ', self.data));
 
 
      def read(self):
@@ -135,8 +140,9 @@ class Server(Socket):
                    data = s.recv(1024);
                    if not data: 
                        if not qs[s].empty():
-                          log.write(quickdate('now')+':');
+                          #log.write(quickdate('now')+':');
                           self._load(qs[s]);
+                          self.postproc();
                        s.close()
                    else: 
                       qs[s].put(data);
@@ -147,10 +153,34 @@ class Server(Socket):
                   break;
 
 
+class SmartlogServer(Server):
+      log = smartlog.Smartlog();
+      def postproc(self):
+         for k in self.data:
+             self.log.info("%s: %s" % (
+                  str(k, 'utf-8'),
+                  str(self.data[k], 'utf-8')
+             ));
 
-     def printout(self):
-         for sockname in self.data:
-             print(sockname + ':');
-             for packet in self.data[sockname]:
-                 print(packet);
-             print();
+
+class DispatchServer(Server):
+      #ts = []
+      def runcmd(self, k, cmd):
+          import subprocess
+          p = subprocess.Popen(
+                str(cmd, 'utf-8').split(" "), 
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+          );
+          log = smartlog.Smartlog();
+          log.name = k.decode();
+          log.printname = True
+          stdout, stderr = p.communicate();
+          for line in stdout.decode().split('\n')[:-1]:
+              log.logok(line);
+      def postproc(self):
+         for k in self.data:
+             t = threading.Thread(target=self.runcmd, args=(k, self.data[k]));
+             t.start();
+         self.data = {};
