@@ -83,6 +83,8 @@ class AutoCompleter():
         elif key == '\t':
            if self.suggestion:
               self.input += ' ';
+        elif key == '\x0e' or key == '\x06':
+             pass
         elif key == '\n':
            if self.suggestion:
               self.input += self.suggestion;

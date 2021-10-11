@@ -1,6 +1,7 @@
 import smartlog
 import hashtag
 import json
+import toolbelt
 
 
 # Let's assume a DataServer base class is a list of dictionaries.
@@ -23,20 +24,64 @@ class DataServer:
           self.log    = smartlog.Smartlog();
 
 
+      def configure(self, format=None):
+          if not format: format = self.format;
+          commands = ['new', 'edit', 'view', 'list', 'search'];
+          if 'fields' in format:
+             for command in commands:
+                 if command in format:
+                    if 'fields' not in format[command]:
+                        format[command]['fields'] = format['fields'];
+                    if 'include' in format[command]:
+                        format[command]['fields'] += format[command]['include'];
+                    if 'exclude' in format[command]:
+                        format[command]['fields'] = toolbelt.logic.difference(
+                        format[command]['fields'], format[command]['exclude']);
+                 else:  format[command] = {'fields': format['fields']};
+          self.format = format;
+
+
       open_ = open
       def open(self, arg):
-          if os.path.exists(arg):
+          """ Opens database from JSON file, or argument """
+          if isinstance(arg, str) and os.path.exists(arg):
              f = open_(arg, 'r')
-             self.data = data;
+             self.data = json.loads(f.read());
+          elif isinstance(arg, list):
+             self.data = arg;
+
+      def load(self,path):
+          try:
+             if path.endswith(".csv"):
+                import csv
+                with open(path, mode='r') as csvfile:
+                   self.describe();
+                   reader = csv.DictReader(csvfile, self.types.keys());
+                   self.data = [];
+                   for row in reader:
+                       self.data  += [row];
+             elif path.endswith(".tag"):
+                  from hashtag.hashtag import HashTagger;
+                  ht = HashTagger(path);
+                  self.data = ht.db;
+             elif path.endswith(".json"):
+                  import json;
+                  f = open(path, 'r');
+                  self.data = json.loads(f.read());
+                  close(f)
+             else: 
+                  from toolbelt.editors import vimdb
+                  vimdb(self.data);
+          except: 
+            import traceback;
+            traceback.print_exc();
+            return False;
+          else:   return True;
 
 
-      #############
-      #! Sets types
-      #############
       def describe(self):
-          if self.types: 
-             return self.types;
-          for i in len(self.data):
+          """ Sets types"""
+          for i in range(len(self.data)):
               for k in self.data[i]:
                   if k not in self.types:
                      self.types[k] = type(self.data[i][k]);
@@ -44,20 +89,17 @@ class DataServer:
 
 
 
-      ######################
-      #! #! Gets first value
-      ######################
-      def first(self):
-          if self.data:
-             if len(self.data) > 0:
-                return self.data[0];
+      def first(self, data=None):
+          """ Gets first value """
+          if not data: data = self.data;
+          if data:
+             if len(data) > 0:
+                return data[0];
           return None;
 
 
-      ######################################
-      #!   Searches, returns list of indices
-      ######################################
       def search(self, query):
+          """ Searches, returns list of indices """
           import re;
           locs = [];
           if '=' in query: 
@@ -76,10 +118,8 @@ class DataServer:
 
 
 
-      ####################################
-      #!   Creates a new entry
-      ####################################
       def insert(self, data):
+          """ Creates a new entry"""
           if isinstance(data, dict):
              self.data += [data];
           elif isinstance(data, list):
@@ -88,26 +128,56 @@ class DataServer:
              self.data += list(data); 
 
 
-      ####################
-      #! Deletes by id
-      ####################
-      def delete(self, id):
-          ds = [d for d in self.data if d[self.pk]==id]
-          for d in ds:
-              self.data.pop(d);
 
-
-      #######################
-      #! Updates by data/id 
-      #######################
-      def update(self, d):
-          ds = [x for x in self.data if d[self.pk]==x[self.pk]]
-          for x in ds:
-              x.update(d);
-          if not ds: self.data += [d];
+      def delete(self, ids):
+         """ Deletes by id"""
+         if not isinstance(ids, list):
+            ids = [ids];
+         for id in ids:
+            ds = [d for d in self.data if d[self.pk]==id]
+            for d in ds:
+                self.data.remove(d);
 
 
 
-if '__name__' == '__main__':
-   ds = DataServer('people');
-   ds.update();
+      def update(self, uds):
+          """ Updates by data/id """
+          if not isinstance(uds, list):
+             uds = [uds];
+          for d in uds:
+             ds = [x for x in self.data if d[self.pk]==x[self.pk]]
+             for x in ds:
+                 x.update(d);
+             if not ds: 
+                 self.data += [d];
+
+
+      def save(self,path):
+          try:
+             if path.endswith(".csv"):
+                import csv
+                with open(path, mode='w') as csvfile:
+                   self.describe();
+                   writer = csv.DictWriter(csvfile, self.types.keys());
+                   writer.writeheader();
+                   for row in self.data:
+                       writer.writerow(row);
+             elif path.endswith(".tag"):
+                  from hashtag.hashtag import HashTagger;
+                  ht = HashTagger('');
+                  ht.db = self.data;
+                  ht.writeout(filename=path);
+             elif path.endswith(".json"):
+                  import json;
+                  jstr = json.dumps(self.data);
+                  f = open(path, 'w');
+                  f.write(jstr);
+             else: 
+                  from toolbelt.editors import vimdb
+                  vimdb(self.data);
+          except: 
+            import traceback;
+            traceback.print_exc();
+            return False;
+          else:   return True;
+

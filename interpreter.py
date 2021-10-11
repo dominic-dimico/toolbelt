@@ -75,8 +75,9 @@ class Interpreter:
          if 'args' in action:
              if not action['args']:
                 args = None;
-      except KeyError: 
+      except KeyError as e: 
          self.log.warn("Command not found: %s" % (cn));
+         self.log.warn("Exception: %s" % (e));
          return args;
       except Exception:
          import traceback; traceback.print_exc();

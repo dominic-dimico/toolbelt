@@ -23,8 +23,8 @@ class Socket:
    plug = None;
 
 
-   def __init__(self, host, port, name="", init=True):
-       self.config(host, port, name);
+   def __init__(self, host, port, lhost='localhost', lport=0, name="", init=True):
+       self.config(host, port, lhost, lport, name);
        if init: self.reset();
 
 
@@ -34,12 +34,14 @@ class Socket:
        return s
 
 
-   def config(self, host, port, name):
+   def config(self, host, port, lhost='localhost', lport=0, name=""):
       if name == "":
             self.name     = binascii.b2a_hex(os.urandom(4)).decode();
       else: self.name     = name;
       self.host           = host;
       self.port           = port;
+      self.lhost          = lhost;
+      self.lport          = lport;
       self.listening      = False;
       self.connected      = False;
       self.reset_server   = False;
@@ -74,12 +76,26 @@ class Socket:
 
 
    def listen(self):
+       import math; import random;
        if not self.listening:
-          self.sock.bind((self.host, self.port));
-          self.sock.listen(5);
-          conn, addr     = sock.accept();
+          print((self.lhost, self.lport));
+          while True:
+             port = (math.floor(random.random()*10000+50000) 
+                     if (self.lport == 0) else self.lport);
+             try:
+                self.sock.bind((self.lhost, port));
+                self.sock.listen(5);
+             except Exception as e: 
+                  import traceback;
+                  traceback.print_exc();
+                  print(port);
+                  input();
+             else: break;
+          lhost, lport   = self.sock.getsockname();
+          self.lport     = lport;
+          conn, addr     = self.sock.accept();
           host, port     = addr;
-          self.plug      = Socket(host, port, '?', init = False);
+          self.plug      = Socket(host, port, name='?', init=False);
           self.plug.sock = conn;
           self.listening = True;
 
@@ -151,7 +167,7 @@ class Server(Socket):
 
 
      def __init__(self, host, port):
-        super().__init__(host, port);
+        super().__init__(host, port, host, port);
      
 
      #####################################
@@ -173,11 +189,10 @@ class Server(Socket):
 
      def reset(self):
          super().reset()
-         try:
-            self.sock.bind((self.host,self.port));
+         if not self.listening:
+            self.sock.bind((self.lhost,self.lport));
             self.sock.listen(5);
-         except: pass;
-         else: self.listening = True;
+            self.listening = True;
 
 
      def read(self):
@@ -196,12 +211,12 @@ class Server(Socket):
               try:
                  s = ss.sock;
                  if s == serversock:
-                   print((ss, s));
+                   #print((ss, s));
                    conn, addr = s.accept();
                    host, port = addr;
                    if conn:
                       conn.setblocking(0);
-                      plug = Socket(host, port, '', init=False);
+                      plug = Socket(host, port, name='', init=False);
                       plug.sock = conn;
                       rx.append(plug); 
                       qs[conn] = queue.Queue();
@@ -227,30 +242,34 @@ class ChatClient(Socket):
       log = smartlog.Smartlog();
 
       def __init__(self, name):
-          super().__init__('box.local', 50007, name);
+          super().__init__('box.local', 50007, name=name);
           self.log.printname=True;
           self.run();
 
-      def listen(self):
+      def listener(self):
           while True:
             x = self.read(); 
             self.log.name = x['from']
-            self.log.logn(x['content']);
+            self.log.logn(x['date'] + ': ' + x['content']);
 
-      def talk(self):
+      def talker(self):
           while True:
              x = self.log.prompt('msg');
              self.write({
                 'from': self.name, 
-                'content': x
+                'content': x,
+                'date': quickdate('now')
              });
 
       def run(self):
-          listener = threading.Thread(self.listen);
-          #talker   = threading.Thread(self.talk);
+          self.write({
+             'from': self.name, 
+             'content': 'logged in',
+             'date': quickdate('now')
+          });
+          listener = threading.Thread(target=self.listener, args=());
           listener.run();
-          #talker.run();
-          self.talk();
+          self.talker();
           
           
 
@@ -267,6 +286,7 @@ class ChatServer(Server):
          for w in self.wx:
              if w != self:
                 w.write(msg);
+                print(msg);
          sock = args['socket'];
          return args;
 
